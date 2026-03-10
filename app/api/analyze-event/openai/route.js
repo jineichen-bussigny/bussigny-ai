@@ -4,6 +4,28 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Rate limiting: 15 requests per IP per hour
+const rateLimitMap = new Map();
+const RATE_LIMIT = 15;
+const WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
 function extractText(output) {
   if (!output) return "";
 
@@ -32,6 +54,18 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+
+  if (!checkRateLimit(ip)) {
+    return Response.json(
+      { error: "Trop de requêtes. Limite : 15 par heure." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
     const { prompt, images = [] } = body || {};
@@ -52,19 +86,19 @@ export async function POST(req) {
     ];
 
     const response = await client.responses.create({
-      model: "gpt-4.1",
+      model: "gpt-4o",
       input: [
         {
           role: "user",
           content,
         },
       ],
+      text: { format: { type: "json_object" } },
     });
 
     const text = response.output_text || extractText(response.output);
-    const clean = String(text || "").replace(/```json|```/g, "").trim();
 
-    if (!clean) {
+    if (!text) {
       return Response.json(
         { error: "Réponse vide du modèle OpenAI." },
         { status: 502 }
@@ -72,13 +106,13 @@ export async function POST(req) {
     }
 
     try {
-      const parsed = JSON.parse(clean);
+      const parsed = JSON.parse(text);
       return Response.json(parsed);
     } catch {
       return Response.json(
         {
           error: "La réponse du modèle n'est pas un JSON valide.",
-          raw: clean,
+          raw: text,
         },
         { status: 502 }
       );
