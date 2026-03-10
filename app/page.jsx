@@ -395,7 +395,7 @@ Julien`;
               Transforme des affiches en textes prêts à diffuser.
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
-              Dépose un ou plusieurs visuels d'événement, choisis les canaux cibles et génère automatiquement les textes adaptés à chaque plateforme.
+              Dépose un ou plusieurs visuels d&apos;événement, choisis les canaux cibles et génère automatiquement les textes adaptés à chaque plateforme.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-4">
@@ -416,7 +416,7 @@ Julien`;
 
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-xs font-medium text-slate-600">Mode d'analyse</label>
+                <label className="mb-2 block text-xs font-medium text-slate-600">Mode d&apos;analyse</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { id: "demo", label: "Démo locale" },
@@ -441,7 +441,7 @@ Julien`;
               </div>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-                En mode démo, l'application génère un résultat réaliste sans appeler de modèle externe. En mode API, ChatGPT analyse les visuels et produit les textes via l'endpoint sécurisé.
+                En mode démo, l&apos;application génère un résultat réaliste sans appeler de modèle externe. En mode API, ChatGPT analyse les visuels et produit les textes via l&apos;endpoint sécurisé.
               </div>
             </div>
           </motion.div>
@@ -555,7 +555,7 @@ Julien`;
                 </div>
                 <div className="text-base font-semibold text-slate-800">Les résultats apparaîtront ici</div>
                 <div className="mt-2 text-sm leading-6 text-slate-500">
-                  Charge un ou plusieurs visuels, puis lance l'analyse pour générer les textes par canal.
+                  Charge un ou plusieurs visuels, puis lance l&apos;analyse pour générer les textes par canal.
                 </div>
               </div>
             )}

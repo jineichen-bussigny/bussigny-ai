@@ -67,6 +67,7 @@ export default function ImageUploader({ images, onFilesAdded, onRemoveImage, onA
             <div className="mb-4 flex flex-wrap justify-center gap-3">
               {images.map((img, i) => (
                 <div key={`${img.name}-${i}`} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.url}
                     alt={img.name}
@@ -101,7 +102,7 @@ export default function ImageUploader({ images, onFilesAdded, onRemoveImage, onA
             <Upload className="mx-auto mb-3 h-10 w-10 text-slate-400" />
             <div className="text-base font-semibold text-slate-800">Dépose tes affiches ou flyers ici</div>
             <div className="mt-1 text-sm text-slate-500">
-              JPG, PNG, WEBP — jusqu'à {MAX_IMAGES} visuels, max {MAX_IMAGE_SIZE_MB} Mo chacun
+              JPG, PNG, WEBP — jusqu&apos;à {MAX_IMAGES} visuels, max {MAX_IMAGE_SIZE_MB} Mo chacun
             </div>
           </div>
         )}
