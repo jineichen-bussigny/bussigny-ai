@@ -37,10 +37,7 @@ export async function POST(req) {
     const { prompt, images = [] } = body || {};
 
     if (!prompt) {
-      return Response.json(
-        { error: "Missing prompt" },
-        { status: 400 }
-      );
+      return Response.json({ error: "Missing prompt" }, { status: 400 });
     }
 
     const content = [
