@@ -1,3 +1,5 @@
+﻿import "./globals.css";
+
 export const metadata = {
   title: "Bussigny AI",
   description: "Générateur multicanal pour la Ville de Bussigny",
