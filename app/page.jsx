@@ -1,7 +1,21 @@
 "use client";
+
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Upload, Sparkles, Copy, Trash2, Link as LinkIcon, Mail, Image as ImageIcon, CheckCircle2, AlertCircle, Settings2, Send } from "lucide-react";
+import {
+  Upload,
+  Sparkles,
+  Copy,
+  Trash2,
+  Link as LinkIcon,
+  Mail,
+  Image as ImageIcon,
+  CheckCircle2,
+  AlertCircle,
+  Settings2,
+  Send,
+  RefreshCcw,
+} from "lucide-react";
 
 const CHANNELS = [
   { id: "instagram", label: "Instagram", handle: "@mybussigny", icon: "📱", color: "#E1306C", bg: "#fff0f5" },
@@ -115,7 +129,6 @@ function SendOutlookButton({ to, subject, body }) {
     const mailtoUrl = `mailto:${to || ""}?subject=${safeSubject}&body=${safeBody}`;
 
     const popup = window.open(outlookWebUrl, "_blank", "noopener,noreferrer");
-
     if (!popup) {
       window.location.href = mailtoUrl;
     }
@@ -137,6 +150,7 @@ function SendOutlookButton({ to, subject, body }) {
 function linkify(text) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = String(text || "").split(urlRegex);
+
   return parts.map((part, i) =>
     urlRegex.test(part) ? (
       <a
@@ -177,7 +191,7 @@ function ChannelCard({ channel, content }) {
         <CopyButton getText={() => content} />
       </div>
 
-      <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+      <div className="min-h-[88px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-800">
         {showLinks ? linkify(content) : content}
       </div>
     </motion.div>
@@ -204,7 +218,7 @@ function ResultBlock({ title, icon, children, tone = "blue", copyText, actions }
           {copyText ? <CopyButton getText={() => copyText} /> : null}
         </div>
       </div>
-      <div className="rounded-2xl border border-white/70 bg-white p-4 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+      <div className="whitespace-pre-wrap rounded-2xl border border-white/70 bg-white p-4 text-sm leading-6 text-slate-800">
         {children}
       </div>
     </div>
@@ -213,11 +227,29 @@ function ResultBlock({ title, icon, children, tone = "blue", copyText, actions }
 
 function buildPrompt({ formLink, notes }) {
   return `Tu es community manager de la Commune de Bussigny (canton de Vaud, Suisse).
-Analyse ces visuels d'événement communal (plusieurs versions du même événement) et réponds UNIQUEMENT en JSON valide, sans balises markdown.
+
+Analyse ce ou ces visuels d'événement communal et réponds UNIQUEMENT en JSON valide, sans balises markdown.
+
+Objectifs :
+1. Identifier automatiquement les informations visibles sur l'affiche.
+2. Signaler ce qui manque, est ambigu ou peu lisible.
+3. Générer les textes de communication à partir des informations extraites.
 
 Format exact attendu :
 {
   "eventName": "Nom court de l'événement",
+  "structuredData": {
+    "date": "Date principale de l'événement ou vide si inconnue",
+    "time": "Horaire ou vide si inconnu",
+    "location": "Lieu ou vide si inconnu",
+    "audience": "Public cible ou vide si inconnu",
+    "price": "Prix ou gratuité ou vide si inconnu",
+    "registrationRequired": true,
+    "registrationLink": "${formLink || "[LIEN FORMULAIRE]"}",
+    "organizer": "Organisateur ou vide si inconnu",
+    "contact": "Contact ou vide si inconnu",
+    "confidenceNotes": "Mentionne brièvement les informations incertaines, manquantes ou difficiles à lire"
+  },
   "analyse": "Résumé court de l'événement en 2-3 phrases",
   "instagram": "Texte Instagram complet avec emojis et hashtags",
   "facebook": "Texte Facebook complet avec le lien formulaire : ${formLink || "[LIEN FORMULAIRE]"}",
@@ -225,19 +257,69 @@ Format exact attendu :
   "recommandations": "3 recommandations courtes : meilleur moment de publication par canal + 1 idée contenu complémentaire"
 }
 
-Règles par canal :
-- Instagram : accroche forte ligne 1, max 5 lignes avant \"voir plus\", 1-2 emojis, call-to-action \"Lien en bio\", 5 hashtags (#Bussigny #VaudAgenda + thématiques)
-- Facebook : 100-250 caractères, ton informatif et proche, toutes infos clés, max 1 emoji, inclure le lien formulaire en fin de texte
+Règles :
+- N'invente pas d'information absente.
+- Si une information n'est pas visible ou reste douteuse, mets une chaîne vide et explique dans "confidenceNotes".
+- Instagram : accroche forte ligne 1, max 5 lignes avant "voir plus", 1-2 emojis, call-to-action "Lien en bio", 5 hashtags (#Bussigny #VaudAgenda + thématiques)
+- Facebook : 100-250 caractères, ton informatif et proche, toutes infos clés disponibles, max 1 emoji, inclure le lien formulaire en fin de texte
 - ActuApp/WhatsApp : titre max 60 car., message max 160 car., ton officiel et direct, inclure le lien formulaire
 - Langue : français
 ${notes ? `\nInformations contextuelles à intégrer impérativement dans les textes :\n${notes}` : ""}`;
 }
 
+function buildRegenerationPrompt({ eventName, structuredData, notes }) {
+  return `Tu es community manager de la Commune de Bussigny (canton de Vaud, Suisse).
+
+À partir des informations validées ci-dessous, génère UNIQUEMENT un JSON valide, sans balises markdown.
+
+Informations validées :
+- Nom de l'événement : ${eventName || ""}
+- Date : ${structuredData.date || ""}
+- Horaire : ${structuredData.time || ""}
+- Lieu : ${structuredData.location || ""}
+- Public cible : ${structuredData.audience || ""}
+- Prix / gratuité : ${structuredData.price || ""}
+- Inscription requise : ${structuredData.registrationRequired ? "oui" : "non"}
+- Lien d'inscription : ${structuredData.registrationLink || ""}
+- Organisateur : ${structuredData.organizer || ""}
+- Contact : ${structuredData.contact || ""}
+- Remarques / incertitudes : ${structuredData.confidenceNotes || ""}
+
+Format exact attendu :
+{
+  "instagram": "Texte Instagram complet avec emojis et hashtags",
+  "facebook": "Texte Facebook complet",
+  "actuwp": "TITRE: [max 60 car.]\\nMESSAGE: [max 160 car.]",
+  "recommandations": "3 recommandations courtes : meilleur moment de publication par canal + 1 idée contenu complémentaire"
+}
+
+Règles :
+- N'utilise que les informations fournies.
+- Instagram : accroche forte ligne 1, max 5 lignes avant "voir plus", 1-2 emojis, call-to-action "Lien en bio", 5 hashtags (#Bussigny #VaudAgenda + thématiques)
+- Facebook : 100-250 caractères, ton informatif et proche, toutes infos clés disponibles, max 1 emoji, inclure le lien d'inscription si disponible
+- ActuApp/WhatsApp : titre max 60 car., message max 160 car., ton officiel et direct, inclure le lien si disponible
+- Langue : français
+${notes ? `\nInformations contextuelles à intégrer impérativement :\n${notes}` : ""}`;
+}
+
 function makeDemoResult({ notes, formLink, canaux }) {
   const date = new Date().toLocaleDateString("fr-CH", { day: "2-digit", month: "long" });
   const hasTotem = canaux.includes("Totem");
+
   return {
     eventName: "Événement communal",
+    structuredData: {
+      date,
+      time: "14h00 – 18h00",
+      location: "Bussigny",
+      audience: "Tout public",
+      price: "Gratuit",
+      registrationRequired: false,
+      registrationLink: formLink || "",
+      organizer: "Ville de Bussigny",
+      contact: "",
+      confidenceNotes: "Démo locale : données simulées automatiquement.",
+    },
     analyse:
       "Le visuel annonce un événement communal destiné aux habitantes et habitants de Bussigny. Le ton est convivial et accessible, avec un objectif d'information et de mobilisation.",
     instagram:
@@ -251,30 +333,18 @@ function makeDemoResult({ notes, formLink, canaux }) {
   };
 }
 
-async function analyzeWithEndpoint({ images, formLink, notes, endpoint, provider }) {
-  const prompt = buildPrompt({ formLink, notes });
-
-  const payload = {
-    provider,
-    prompt,
-    images: images.map((img) => ({
-      mime: img.mime,
-      data: img.base64,
-      name: img.name,
-    })),
-  };
-
+async function postToEndpoint({ endpoint, payload }) {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
-  }
-
   const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data?.details || data?.error || `HTTP ${res.status}`);
+  }
 
   if (typeof data === "string") {
     return JSON.parse(data);
@@ -293,7 +363,21 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [eventName, setEventName] = useState("");
   const [recommendations, setRecommendations] = useState(null);
+  const [structuredData, setStructuredData] = useState({
+    date: "",
+    time: "",
+    location: "",
+    audience: "",
+    price: "",
+    registrationRequired: false,
+    registrationLink: "",
+    organizer: "",
+    contact: "",
+    confidenceNotes: "",
+  });
+
   const [loading, setLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [folderLink, setFolderLink] = useState("");
@@ -326,13 +410,26 @@ export default function App() {
     const valid = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
     if (!valid.length) return;
     const loaded = await Promise.all(valid.map(readFile));
+
     setImages((prev) => [...prev, ...loaded].slice(0, 5));
     setResults(null);
     setAnalysis(null);
     setRecommendations(null);
     setError(null);
     setEventName("");
-  }, []);
+    setStructuredData({
+      date: "",
+      time: "",
+      location: "",
+      audience: "",
+      price: "",
+      registrationRequired: false,
+      registrationLink: formLink,
+      organizer: "",
+      contact: "",
+      confidenceNotes: "",
+    });
+  }, [formLink]);
 
   const removeImage = (i) => setImages((prev) => prev.filter((_, idx) => idx !== i));
 
@@ -342,8 +439,32 @@ export default function App() {
     handleFiles(e.dataTransfer.files);
   };
 
+  const applyParsedResult = (parsed) => {
+    setEventName(parsed.eventName || "");
+    setAnalysis(parsed.analyse || parsed.analysis || "");
+    setResults({
+      instagram: parsed.instagram || "",
+      facebook: parsed.facebook || "",
+      actuwp: parsed.actuwp || "",
+    });
+    setRecommendations(parsed.recommandations || parsed.recommendations || "");
+    setStructuredData({
+      date: parsed.structuredData?.date || "",
+      time: parsed.structuredData?.time || "",
+      location: parsed.structuredData?.location || "",
+      audience: parsed.structuredData?.audience || "",
+      price: parsed.structuredData?.price || "",
+      registrationRequired: parsed.structuredData?.registrationRequired || false,
+      registrationLink: parsed.structuredData?.registrationLink || formLink || "",
+      organizer: parsed.structuredData?.organizer || "",
+      contact: parsed.structuredData?.contact || "",
+      confidenceNotes: parsed.structuredData?.confidenceNotes || "",
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!images.length) return;
+
     setLoading(true);
     setError(null);
     setResults(null);
@@ -352,16 +473,55 @@ export default function App() {
       const parsed =
         mode === "demo"
           ? makeDemoResult({ notes, formLink, canaux })
-          : await analyzeWithEndpoint({
-              images,
-              formLink,
-              notes,
+          : await postToEndpoint({
               endpoint: apiEndpoint,
-              provider,
+              payload: {
+                provider,
+                prompt: buildPrompt({ formLink, notes }),
+                images: images.map((img) => ({
+                  mime: img.mime,
+                  data: img.base64,
+                  name: img.name,
+                })),
+              },
             });
 
-      setEventName(parsed.eventName || "");
-      setAnalysis(parsed.analyse || parsed.analysis || "");
+      applyParsedResult(parsed);
+    } catch (e) {
+      setError(
+        mode === "demo"
+          ? "Erreur lors de l'analyse en mode démo."
+          : `Impossible d'appeler l'API ${provider === "openai" ? "OpenAI" : "Anthropic"}. ${e.message || ""}`
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!results) return;
+
+    setRegenerating(true);
+    setError(null);
+
+    try {
+      const parsed =
+        mode === "demo"
+          ? {
+              instagram: `🎉 ${eventName}\n\n${structuredData.date ? `Rendez-vous le ${structuredData.date}` : "Rendez-vous bientôt"}${structuredData.time ? ` à ${structuredData.time}` : ""}${structuredData.location ? ` à ${structuredData.location}` : ""}.\n\nLien en bio.\n\n#Bussigny #VaudAgenda #VieLocale #Événement #Commune`,
+              facebook: `${eventName}${structuredData.date ? ` · ${structuredData.date}` : ""}${structuredData.location ? ` · ${structuredData.location}` : ""}. ${structuredData.registrationLink ? `Infos et inscription : ${structuredData.registrationLink}` : ""}`,
+              actuwp: `TITRE: ${eventName || "Événement communal"}\nMESSAGE: ${structuredData.date || "Bientôt"}${structuredData.location ? ` à ${structuredData.location}` : ""}. ${structuredData.registrationLink ? `Infos : ${structuredData.registrationLink}` : ""}`,
+              recommandations: "• Régénération démo à partir des champs corrigés",
+            }
+          : await postToEndpoint({
+              endpoint: apiEndpoint,
+              payload: {
+                provider,
+                prompt: buildRegenerationPrompt({ eventName, structuredData, notes }),
+                images: [],
+              },
+            });
+
       setResults({
         instagram: parsed.instagram || "",
         facebook: parsed.facebook || "",
@@ -369,13 +529,9 @@ export default function App() {
       });
       setRecommendations(parsed.recommandations || parsed.recommendations || "");
     } catch (e) {
-      setError(
-        mode === "demo"
-          ? "Erreur lors de l'analyse en mode démo."
-          : `Impossible d'appeler l'API ${provider === "openai" ? "OpenAI" : "Anthropic"}. Branche un endpoint serveur qui reçoit les images et renvoie le JSON attendu.`
-      );
+      setError(`Impossible de régénérer les textes. ${e.message || ""}`);
     } finally {
-      setLoading(false);
+      setRegenerating(false);
     }
   };
 
@@ -410,11 +566,20 @@ ${results.actuwp}
 ${totemNote}${folderLink ? `\n---\n📁 Dossier des visuels : ${folderLink}\n` : ""}
 ---
 
+Informations extraites :
+- Date : ${structuredData.date || "-"}
+- Horaire : ${structuredData.time || "-"}
+- Lieu : ${structuredData.location || "-"}
+- Public : ${structuredData.audience || "-"}
+- Prix : ${structuredData.price || "-"}
+- Organisateur : ${structuredData.organizer || "-"}
+- Contact : ${structuredData.contact || "-"}
+
 Pourras-tu me communiquer le planning de publication prévu pour ces canaux ?
 
 Merci et bonne journée,
 Julien`;
-  }, [results, canaux, eventName, folderLink, emailSubject]);
+  }, [results, canaux, eventName, folderLink, emailSubject, structuredData]);
 
   const buildEmailBody = useCallback(() => {
     if (!results) return "";
@@ -442,11 +607,18 @@ ${totemNote}${folderLink ? `\n---\n📁 Dossier des visuels : ${folderLink}\n` :
 ---
 Canaux : ${canauxStr}
 
+Informations extraites :
+- Date : ${structuredData.date || "-"}
+- Horaire : ${structuredData.time || "-"}
+- Lieu : ${structuredData.location || "-"}
+- Public : ${structuredData.audience || "-"}
+- Prix : ${structuredData.price || "-"}
+
 Pourras-tu me communiquer le planning de publication prévu pour ces canaux ?
 
 Merci et bonne journée,
 Julien`;
-  }, [results, canaux, eventName, folderLink]);
+  }, [results, canaux, eventName, folderLink, structuredData]);
 
   const stats = useMemo(
     () => [
@@ -471,7 +643,7 @@ Julien`;
               Transforme des affiches en textes prêts à diffuser.
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
-              Cette version est prête pour une démo dans le canvas. En mode API, tu peux maintenant la brancher aussi bien à ChatGPT qu'à Claude via un endpoint backend.
+              L’IA lit automatiquement l’affiche, extrait les informations utiles, puis génère les textes pour Instagram, Facebook, ActuApp/WhatsApp et le brouillon d’email.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-4">
@@ -517,47 +689,47 @@ Julien`;
 
               {mode === "api" ? (
                 <>
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-slate-600">IA utilisée</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {AI_PROVIDERS.map((opt) => (
-                      <button
-                        type="button"
-                        key={opt.id}
-                        onClick={() => {
-                          setProvider(opt.id);
-                          setApiEndpoint(opt.id === "openai" ? "/api/analyze-event/openai" : "/api/analyze-event/anthropic");
-                        }}
-                        className={classNames(
-                          "rounded-2xl border px-4 py-3 text-sm font-medium transition",
-                          provider === opt.id
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">IA utilisée</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {AI_PROVIDERS.map((opt) => (
+                        <button
+                          type="button"
+                          key={opt.id}
+                          onClick={() => {
+                            setProvider(opt.id);
+                            setApiEndpoint(opt.id === "openai" ? "/api/analyze-event/openai" : "/api/analyze-event/anthropic");
+                          }}
+                          className={classNames(
+                            "rounded-2xl border px-4 py-3 text-sm font-medium transition",
+                            provider === opt.id
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-slate-600">Endpoint serveur</label>
-                  <input
-                    value={apiEndpoint}
-                    onChange={(e) => setApiEndpoint(e.target.value)}
-                    placeholder="/api/analyze-event"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none ring-0 transition focus:border-slate-400"
-                  />
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    L'appel direct à l'API depuis le navigateur n'est pas recommandé. OpenAI comme Anthropic demandent de garder la clé côté serveur. Passe par un backend pour protéger la clé API et contourner les limites CORS.
-                  </p>
-                </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Endpoint serveur</label>
+                    <input
+                      value={apiEndpoint}
+                      onChange={(e) => setApiEndpoint(e.target.value)}
+                      placeholder="/api/analyze-event/openai"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none ring-0 transition focus:border-slate-400"
+                    />
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      La clé API reste côté serveur. Le navigateur appelle seulement l’endpoint interne.
+                    </p>
+                  </div>
                 </>
               ) : null}
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-                En mode démo, l'application génère un résultat réaliste sans appeler de modèle externe. En mode API, tu peux utiliser ChatGPT ou Claude pour analyser les visuels et produire les textes.
+                En mode démo, l'application simule l’extraction d’informations et la génération de textes. En mode API, elle utilise réellement ChatGPT ou Claude.
               </div>
             </div>
           </motion.div>
@@ -597,7 +769,13 @@ Julien`;
                   <input
                     type="url"
                     value={formLink}
-                    onChange={(e) => setFormLink(e.target.value)}
+                    onChange={(e) => {
+                      setFormLink(e.target.value);
+                      setStructuredData((prev) => ({
+                        ...prev,
+                        registrationLink: e.target.value,
+                      }));
+                    }}
                     placeholder="https://forms.clickup.com/..."
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
                   />
@@ -623,7 +801,7 @@ Julien`;
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={4}
-                    placeholder={'Ex : Organisé par la commission intégration — mettre en avant le caractère familial et l\'inscription au formulaire'}
+                    placeholder={"Ex : Organisé par la commission intégration — mettre en avant le caractère familial et l'inscription au formulaire"}
                     className="w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 outline-none transition focus:border-slate-400"
                   />
                 </div>
@@ -677,6 +855,7 @@ Julien`;
                   </div>
                 )}
               </div>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -695,6 +874,18 @@ Julien`;
                 >
                   <Sparkles className="h-4 w-4" />
                   {loading ? "Analyse en cours..." : `Analyser ${images.length} visuel${images.length > 1 ? "s" : ""}`}
+                </button>
+              ) : null}
+
+              {results ? (
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {regenerating ? "Régénération..." : "Régénérer les textes avec les infos corrigées"}
                 </button>
               ) : null}
             </div>
@@ -722,10 +913,137 @@ Julien`;
                 </div>
                 <div className="text-base font-semibold text-slate-800">Les résultats apparaîtront ici</div>
                 <div className="mt-2 text-sm leading-6 text-slate-500">
-                  Charge un ou plusieurs visuels, puis lance l'analyse pour générer les textes par canal.
+                  Charge un ou plusieurs visuels, puis lance l'analyse pour extraire les informations et générer les textes.
                 </div>
               </div>
             )}
+
+            {results ? (
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 text-sm font-semibold text-slate-800">
+                  🧾 Informations extraites de l'affiche
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Nom de l'événement</label>
+                    <input
+                      type="text"
+                      value={eventName}
+                      onChange={(e) => setEventName(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Date</label>
+                    <input
+                      type="text"
+                      value={structuredData.date}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, date: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Horaire</label>
+                    <input
+                      type="text"
+                      value={structuredData.time}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, time: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Lieu</label>
+                    <input
+                      type="text"
+                      value={structuredData.location}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, location: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Public cible</label>
+                    <input
+                      type="text"
+                      value={structuredData.audience}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, audience: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Prix / gratuité</label>
+                    <input
+                      type="text"
+                      value={structuredData.price}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, price: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Organisateur</label>
+                    <input
+                      type="text"
+                      value={structuredData.organizer}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, organizer: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Contact</label>
+                    <input
+                      type="text"
+                      value={structuredData.contact}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, contact: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Lien d'inscription</label>
+                    <input
+                      type="text"
+                      value={structuredData.registrationLink}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, registrationLink: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 flex items-center gap-3">
+                    <input
+                      id="registrationRequired"
+                      type="checkbox"
+                      checked={structuredData.registrationRequired}
+                      onChange={(e) =>
+                        setStructuredData((prev) => ({
+                          ...prev,
+                          registrationRequired: e.target.checked,
+                        }))
+                      }
+                    />
+                    <label htmlFor="registrationRequired" className="text-sm text-slate-700">
+                      Inscription requise
+                    </label>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-medium text-slate-600">Infos incertaines / manquantes détectées par l'IA</label>
+                    <textarea
+                      rows={3}
+                      value={structuredData.confidenceNotes}
+                      onChange={(e) => setStructuredData((prev) => ({ ...prev, confidenceNotes: e.target.value }))}
+                      className="w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {results ? CHANNELS.map((ch) => <ChannelCard key={ch.id} channel={ch} content={results[ch.id]} />) : null}
 

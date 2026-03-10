@@ -4,10 +4,44 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+function extractText(output) {
+  if (!output) return "";
+
+  if (typeof output === "string") return output;
+
+  if (Array.isArray(output)) {
+    for (const item of output) {
+      if (item.type === "message" && Array.isArray(item.content)) {
+        const textItem = item.content.find((c) => c.type === "output_text");
+        if (textItem?.text) return textItem.text;
+      }
+      if (item.type === "output_text" && item.text) {
+        return item.text;
+      }
+    }
+  }
+
+  return "";
+}
+
+export async function GET() {
+  return Response.json({
+    ok: true,
+    message: "API route exists",
+  });
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { prompt, images } = body;
+    const { prompt, images = [] } = body || {};
+
+    if (!prompt) {
+      return Response.json(
+        { error: "Missing prompt" },
+        { status: 400 }
+      );
+    }
 
     const content = [
       {
@@ -16,7 +50,7 @@ export async function POST(req) {
       },
       ...images.map((img) => ({
         type: "input_image",
-        image_url: `data:${img.mime};base64,${img.data}`,
+        image_url: `data:${img.mime || "image/jpeg"};base64,${img.data}`,
       })),
     ];
 
@@ -30,18 +64,33 @@ export async function POST(req) {
       ],
     });
 
-    const text = response.output_text || "";
-    const clean = text.replace(/```json|```/g, "").trim();
+    const text = response.output_text || extractText(response.output);
+    const clean = String(text || "").replace(/```json|```/g, "").trim();
 
-    return Response.json(JSON.parse(clean));
+    if (!clean) {
+      return Response.json(
+        { error: "Réponse vide du modèle OpenAI." },
+        { status: 502 }
+      );
+    }
 
+    try {
+      const parsed = JSON.parse(clean);
+      return Response.json(parsed);
+    } catch {
+      return Response.json(
+        {
+          error: "La réponse du modèle n'est pas un JSON valide.",
+          raw: clean,
+        },
+        { status: 502 }
+      );
+    }
   } catch (error) {
-    console.error(error);
-
     return Response.json(
       {
         error: "OpenAI request failed",
-        details: error.message,
+        details: error?.message || "unknown_error",
       },
       { status: 500 }
     );
