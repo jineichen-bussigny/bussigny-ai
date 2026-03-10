@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { Upload, Trash2, Sparkles } from "lucide-react";
 
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_SIZE_MB = 5;
 const MAX_IMAGES = 5;
 
@@ -55,7 +55,7 @@ export default function ImageUploader({ images, onFilesAdded, onRemoveImage, onA
         onDrop={handleDrop}
         role="button"
         tabIndex={0}
-        aria-label="Zone de dépôt d'images — cliquer ou glisser-déposer"
+        aria-label="Zone de dépôt d'images - cliquer ou glisser-déposer"
         onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
         className={classNames(
           "cursor-pointer rounded-[24px] border-2 border-dashed p-6 text-center transition",
@@ -102,7 +102,7 @@ export default function ImageUploader({ images, onFilesAdded, onRemoveImage, onA
             <Upload className="mx-auto mb-3 h-10 w-10 text-slate-400" />
             <div className="text-base font-semibold text-slate-800">Dépose tes affiches ou flyers ici</div>
             <div className="mt-1 text-sm text-slate-500">
-              JPG, PNG, WEBP — jusqu&apos;à {MAX_IMAGES} visuels, max {MAX_IMAGE_SIZE_MB} Mo chacun
+              JPG, PNG, WEBP - jusqu&apos;à {MAX_IMAGES} visuels, max {MAX_IMAGE_SIZE_MB} Mo chacun
             </div>
           </div>
         )}

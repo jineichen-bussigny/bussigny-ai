@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildChannelBlocks, buildPrompt, makeDemoResult } from "./content.js";
+import {
+  buildChannelBlocks,
+  buildPrompt,
+  getSelectedChannelIds,
+  makeDemoResult,
+} from "./content.js";
 
 const SAMPLE_RESULTS = {
   instagram: "Texte Instagram de test",
@@ -8,21 +13,40 @@ const SAMPLE_RESULTS = {
   agenda: "Texte agenda de test",
 };
 
-// ---------------------------------------------------------------------------
-// buildChannelBlocks
-// ---------------------------------------------------------------------------
-
-describe("buildChannelBlocks", () => {
-  it("contient tous les en-têtes de canaux", () => {
-    const out = buildChannelBlocks({ results: SAMPLE_RESULTS, canaux: [], folderLink: "" });
-    expect(out).toContain("INSTAGRAM");
-    expect(out).toContain("FACEBOOK");
-    expect(out).toContain("ACTUAPP");
-    expect(out).toContain("AGENDA COMMUNAL");
+describe("getSelectedChannelIds", () => {
+  it("mappe les canaux UI vers les clés de résultat", () => {
+    expect(getSelectedChannelIds(["Instagram", "Facebook", "WhatsApp"])).toEqual([
+      "instagram",
+      "facebook",
+      "actuwp",
+    ]);
   });
 
-  it("intègre le contenu de chaque canal", () => {
-    const out = buildChannelBlocks({ results: SAMPLE_RESULTS, canaux: [], folderLink: "" });
+  it("ignore les canaux sans contenu textuel", () => {
+    expect(getSelectedChannelIds(["Totem"])).toEqual([]);
+  });
+});
+
+describe("buildChannelBlocks", () => {
+  it("n'inclut que les canaux sélectionnés", () => {
+    const out = buildChannelBlocks({
+      results: SAMPLE_RESULTS,
+      canaux: ["Instagram", "WhatsApp"],
+      folderLink: "",
+    });
+
+    expect(out).toContain("INSTAGRAM");
+    expect(out).toContain("ACTUAPP");
+    expect(out).not.toContain("FACEBOOK");
+    expect(out).not.toContain("AGENDA COMMUNAL");
+  });
+
+  it("intègre le contenu de chaque canal sélectionné", () => {
+    const out = buildChannelBlocks({
+      results: SAMPLE_RESULTS,
+      canaux: ["Instagram", "Facebook", "WhatsApp", "Agenda"],
+      folderLink: "",
+    });
     expect(out).toContain(SAMPLE_RESULTS.instagram);
     expect(out).toContain(SAMPLE_RESULTS.facebook);
     expect(out).toContain(SAMPLE_RESULTS.actuwp);
@@ -30,20 +54,28 @@ describe("buildChannelBlocks", () => {
   });
 
   it("ajoute la note Totem si le canal est activé", () => {
-    const out = buildChannelBlocks({ results: SAMPLE_RESULTS, canaux: ["Totem"], folderLink: "" });
+    const out = buildChannelBlocks({
+      results: SAMPLE_RESULTS,
+      canaux: ["Instagram", "Totem"],
+      folderLink: "",
+    });
     expect(out).toContain("TOTEM");
     expect(out).toContain("diffusion du visuel");
   });
 
   it("n'ajoute pas de note Totem si le canal est désactivé", () => {
-    const out = buildChannelBlocks({ results: SAMPLE_RESULTS, canaux: [], folderLink: "" });
+    const out = buildChannelBlocks({
+      results: SAMPLE_RESULTS,
+      canaux: ["Instagram"],
+      folderLink: "",
+    });
     expect(out).not.toContain("TOTEM");
   });
 
   it("ajoute le lien dossier si fourni", () => {
     const out = buildChannelBlocks({
       results: SAMPLE_RESULTS,
-      canaux: [],
+      canaux: ["Instagram"],
       folderLink: "https://drive.google.com/test",
     });
     expect(out).toContain("https://drive.google.com/test");
@@ -51,14 +83,14 @@ describe("buildChannelBlocks", () => {
   });
 
   it("n'ajoute pas de section dossier si le lien est vide", () => {
-    const out = buildChannelBlocks({ results: SAMPLE_RESULTS, canaux: [], folderLink: "" });
+    const out = buildChannelBlocks({
+      results: SAMPLE_RESULTS,
+      canaux: ["Instagram"],
+      folderLink: "",
+    });
     expect(out).not.toContain("Dossier des visuels");
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildPrompt
-// ---------------------------------------------------------------------------
 
 describe("buildPrompt", () => {
   it("mentionne Bussigny dans le prompt", () => {
@@ -109,10 +141,6 @@ describe("buildPrompt", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// makeDemoResult
-// ---------------------------------------------------------------------------
-
 describe("makeDemoResult", () => {
   it("retourne tous les champs attendus", () => {
     const result = makeDemoResult({ notes: "", formLink: "", canaux: [] });
@@ -134,7 +162,11 @@ describe("makeDemoResult", () => {
   });
 
   it("intègre le formLink dans facebook et actuwp", () => {
-    const result = makeDemoResult({ notes: "", formLink: "https://forms.example.com", canaux: [] });
+    const result = makeDemoResult({
+      notes: "",
+      formLink: "https://forms.example.com",
+      canaux: [],
+    });
     expect(result.facebook).toContain("https://forms.example.com");
     expect(result.actuwp).toContain("https://forms.example.com");
   });

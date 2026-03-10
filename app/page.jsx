@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Sparkles,
@@ -14,7 +14,12 @@ import {
   Send,
 } from "lucide-react";
 import ImageUploader from "./components/ImageUploader";
-import { buildPrompt, makeDemoResult, buildChannelBlocks } from "./lib/content";
+import {
+  buildPrompt,
+  makeDemoResult,
+  buildChannelBlocks,
+  getSelectedChannelIds,
+} from "./lib/content";
 
 const CHANNELS = [
   { id: "instagram", label: "Instagram", handle: "@mybussigny", icon: "📱", color: "#E1306C", bg: "#fff0f5" },
@@ -281,24 +286,65 @@ export default function App() {
   );
   const [canaux, setCanaux] = useState(["Instagram", "Facebook", "WhatsApp", "Totem"]);
   const [mode, setMode] = useState("demo");
+  const imagesRef = useRef(images);
+
+  const selectedChannelIds = useMemo(() => new Set(getSelectedChannelIds(canaux)), [canaux]);
+  const visibleChannels = useMemo(
+    () => CHANNELS.filter((channel) => selectedChannelIds.has(channel.id)),
+    [selectedChannelIds]
+  );
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => {
+    return () => {
+      imagesRef.current.forEach((image) => {
+        if (image.url) URL.revokeObjectURL(image.url);
+      });
+    };
+  }, []);
 
   const toggleCanal = (c) => {
     setCanaux((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
   };
 
   const handleFilesAdded = useCallback(async (validFiles, validationError) => {
-    if (validationError) setError(validationError);
     if (!validFiles.length) return;
-    const loaded = await Promise.all(validFiles.map(readFile));
-    setImages((prev) => [...prev, ...loaded].slice(0, 5));
+
+    const remainingSlots = Math.max(0, 5 - images.length);
+    const acceptedFiles = validFiles.slice(0, remainingSlots);
+    const skippedCount = validFiles.length - acceptedFiles.length;
+    const loaded = await Promise.all(acceptedFiles.map(readFile));
+
     setResults(null);
     setAnalysis(null);
     setAgendaMeta(null);
     setNoteEditoriale(null);
     setEventName("");
-  }, []);
 
-  const removeImage = (i) => setImages((prev) => prev.filter((_, idx) => idx !== i));
+    setImages((prev) => [...prev, ...loaded]);
+
+    const messages = [];
+    if (validationError) messages.push(validationError);
+    if (!remainingSlots) {
+      messages.push("Maximum 5 visuels atteint.");
+    } else if (skippedCount > 0) {
+      messages.push(
+        `${skippedCount} visuel${skippedCount > 1 ? "s ont été ignorés" : " a été ignoré"} : maximum 5 visuels.`
+      );
+    }
+
+    setError(messages.length ? messages.join("\n") : null);
+  }, [images]);
+
+  const removeImage = (i) =>
+    setImages((prev) => {
+      const image = prev[i];
+      if (image?.url) URL.revokeObjectURL(image.url);
+      return prev.filter((_, idx) => idx !== i);
+    });
 
   const handleAnalyze = async () => {
     if (!images.length) return;
@@ -333,7 +379,7 @@ export default function App() {
     }
   };
 
-  const emailSubject = `${eventName || "Événement"} — Diffusion multicanaux`;
+  const emailSubject = `${eventName || "Événement"} - Diffusion multicanaux`;
 
   const buildEmailBody = useCallback(() => {
     if (!results) return "";
@@ -517,7 +563,7 @@ Julien`;
                     onChange={(e) => setNotes(e.target.value)}
                     maxLength={MAX_NOTES_LENGTH}
                     rows={4}
-                    placeholder="Ex : Organisé par la commission intégration — mettre en avant le caractère familial et l'inscription au formulaire"
+                    placeholder="Ex : Organisé par la commission intégration - mettre en avant le caractère familial et l'inscription au formulaire"
                     className="w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 outline-none transition focus:border-slate-400"
                   />
                 </div>
@@ -560,17 +606,17 @@ Julien`;
               </div>
             )}
 
-            {results ? CHANNELS.map((ch) => <ChannelCard key={ch.id} channel={ch} content={results[ch.id]} />) : null}
+            {results ? visibleChannels.map((ch) => <ChannelCard key={ch.id} channel={ch} content={results[ch.id]} />) : null}
 
             {results && canaux.includes("Totem") ? (
               <ResultBlock title="Totem" icon="🖥️" tone="slate">
-                Pas de texte — diffusion du visuel au format affiche uniquement.
+                Pas de texte - diffusion du visuel au format affiche uniquement.
               </ResultBlock>
             ) : null}
 
             {results ? (
               <ResultBlock
-                title="Brouillon email — Célia"
+                title="Brouillon email - Célia"
                 icon={<Mail className="h-4 w-4" aria-hidden="true" />}
                 tone="blue"
                 copyText={buildEmail()}
@@ -586,7 +632,7 @@ Julien`;
               </ResultBlock>
             ) : null}
 
-            {agendaMeta ? (
+            {agendaMeta && selectedChannelIds.has("agenda") ? (
               <ResultBlock title="Métadonnées agenda CMS" icon="🗂️" tone="slate">
                 {`Catégorie : ${agendaMeta.categorie}\nQuand : ${agendaMeta.quand}\nOù : ${agendaMeta.ou}`}
               </ResultBlock>

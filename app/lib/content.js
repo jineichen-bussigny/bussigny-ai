@@ -3,10 +3,40 @@
  * Isolées ici pour être testables indépendamment de React.
  */
 
+const CHANNEL_BLOCKS = [
+  {
+    id: "instagram",
+    title: "📱 INSTAGRAM (@mybussigny)",
+    getContent: (results) => results.instagram,
+  },
+  {
+    id: "facebook",
+    title: "📘 FACEBOOK (Ville de Bussigny)",
+    getContent: (results) => results.facebook,
+  },
+  {
+    id: "actuwp",
+    title: "📲 ACTUAPP / WHATSAPP",
+    getContent: (results) => results.actuwp,
+  },
+  {
+    id: "agenda",
+    title: "🗓️ AGENDA COMMUNAL (bussigny.ch)",
+    getContent: (results) => results.agenda,
+  },
+];
+
+const CANAL_TO_RESULT_KEY = {
+  Instagram: "instagram",
+  Facebook: "facebook",
+  WhatsApp: "actuwp",
+  Agenda: "agenda",
+};
+
 export function buildPrompt({ formLink, notes }) {
   const formLinkInstruction = formLink
     ? `Le lien d'inscription / de contact à utiliser est : ${formLink}`
-    : "Aucun lien d'inscription n'a été fourni — ne pas en inventer.";
+    : "Aucun lien d'inscription n'a été fourni - ne pas en inventer.";
 
   return `Tu es un expert en communication institutionnelle municipale et en rédaction multicanal pour les collectivités publiques suisses francophones.
 
@@ -14,7 +44,7 @@ Réponds UNIQUEMENT en JSON valide, sans balises markdown, en respectant exactem
 
 ---
 
-## ÉTAPE 1 — ANALYSE DE L'AFFICHE
+## ÉTAPE 1 - ANALYSE DE L'AFFICHE
 
 Analyse l'image fournie et extrais systématiquement les informations suivantes.
 Si une information est absente ou illisible, indique "non mentionné".
@@ -33,7 +63,7 @@ Si une information est absente ou illisible, indique "non mentionné".
 
 ---
 
-## ÉTAPE 2 — RÉDACTION DES 4 FORMATS
+## ÉTAPE 2 - RÉDACTION DES 4 FORMATS
 
 En te basant UNIQUEMENT sur les informations extraites à l'étape 1, rédige les 4 formats ci-dessous.
 
@@ -45,7 +75,7 @@ ${formLinkInstruction}
 
 ---
 
-### FORMAT 1 — INSTAGRAM (@mybussigny)
+### FORMAT 1 - INSTAGRAM (@mybussigny)
 
 **Règles :**
 - 150 à 220 caractères maximum (hors hashtags)
@@ -59,7 +89,7 @@ ${formLinkInstruction}
 
 ---
 
-### FORMAT 2 — FACEBOOK (Commune de Bussigny / Commission Intégration)
+### FORMAT 2 - FACEBOOK (Commune de Bussigny / Commission Intégration)
 
 **Règles :**
 - 80 à 150 mots
@@ -72,7 +102,7 @@ ${formLinkInstruction}
 
 ---
 
-### FORMAT 3 — WHATSAPP / ACTUAPP
+### FORMAT 3 - WHATSAPP / ACTUAPP
 
 **Règles :**
 - Format : TITRE (court, avec date) + MESSAGE (3 à 5 lignes max)
@@ -84,28 +114,28 @@ ${formLinkInstruction}
 
 ---
 
-### FORMAT 4 — AGENDA bussigny.ch
+### FORMAT 4 - AGENDA bussigny.ch
 
 **Règles :**
 - Chapeau (en gras) : 1 à 2 phrases, accroche invitante
-  → Pour événements sociaux/festifs : commencer par une question rhétorique
-  → Pour événements culturels : phrase évocatrice du contenu
+  -> Pour événements sociaux/festifs : commencer par une question rhétorique
+  -> Pour événements culturels : phrase évocatrice du contenu
 - Corps de texte : 1 à 3 paragraphes selon la richesse des infos
-  → Paragraphe 1 : description de l'événement et public visé
-  → Paragraphe 2 : informations pratiques (inscription, règles, matériel)
-  → Paragraphe 3 (si pertinent) : avantages, contact, lien
-- Ne pas répéter dans le texte les métadonnées structurées (date, lieu, catégorie) — elles apparaissent dans les champs dédiés du CMS
+  -> Paragraphe 1 : description de l'événement et public visé
+  -> Paragraphe 2 : informations pratiques (inscription, règles, matériel)
+  -> Paragraphe 3 (si pertinent) : avantages, contact, lien
+- Ne pas répéter dans le texte les métadonnées structurées (date, lieu, catégorie) - elles apparaissent dans les champs dédiés du CMS
 - Écriture inclusive légère (habitant.e.s, exposant.e.s)
 - Ton : institutionnel mais chaleureux, proxémique
 
 **Métadonnées de l'agenda (champs CMS séparés) :**
-- Catégorie : à déduire parmi — Séniors / Social / Enfance et jeunesse / Culture / Sport / Commune / Fêtes
+- Catégorie : à déduire parmi - Séniors / Social / Enfance et jeunesse / Culture / Sport / Commune / Fêtes
 - Quand : date + heure de début et fin
 - Où : nom du lieu + adresse complète
 
 ---
 
-## ÉTAPE 3 — NOTE ÉDITORIALE
+## ÉTAPE 3 - NOTE ÉDITORIALE
 
 Indique en 3 à 5 lignes :
 - Les informations manquantes qui auraient amélioré les textes
@@ -126,7 +156,7 @@ Réponds avec ce JSON et uniquement ce JSON :
   "agenda": "Texte complet du corps de l'agenda (chapeau en gras + paragraphes)",
   "agendaMeta": {
     "categorie": "Catégorie CMS",
-    "quand": "Date, heure de début – heure de fin",
+    "quand": "Date, heure de début - heure de fin",
     "ou": "Nom du lieu, adresse complète"
   },
   "noteEditoriale": "Note éditoriale en 3 à 5 lignes"
@@ -135,47 +165,44 @@ ${notes ? `\n---\n\nInformations contextuelles à intégrer impérativement dans
 }
 
 export function makeDemoResult({ notes, formLink, canaux }) {
-  const date = new Date().toLocaleDateString("fr-CH", { day: "2-digit", month: "long" });
   const hasTotem = canaux.includes("Totem");
 
   return {
     eventName: "Tournoi de pétanque communal",
     analyse:
-      "Nom : Tournoi de pétanque communal. Date : samedi 14 juin, 13h–18h. Lieu : Place du Verdeau, Bussigny. Organisateur : Service des sports de la Commune de Bussigny. Public : tous publics, équipes de 2 à 3 joueurs. Inscription : obligatoire via formulaire en ligne. Ambiance : graphisme coloré et estival, registre convivial et festif.",
+      "Nom : Tournoi de pétanque communal. Date : samedi 14 juin, 13h-18h. Lieu : Place du Verdeau, Bussigny. Organisateur : Service des sports de la Commune de Bussigny. Public : tous publics, équipes de 2 à 3 joueurs. Inscription : obligatoire via formulaire en ligne. Ambiance : graphisme coloré et estival, registre convivial et festif.",
     instagram:
       `La pétanque, ça vous tente ? 🎯 Formez votre équipe et rejoignez-nous le 14 juin sur la Place du Verdeau pour une après-midi de compétition conviviale. Inscrivez-vous, lien en bio. 🏆\n\n#Bussigny #Pétanque #VieLocale #VaudAgenda #Sport #Commune #Été`,
     facebook:
-      `📅 Tournoi de pétanque communal — samedi 14 juin, 13h à 18h\n\nLa Commune de Bussigny organise son tournoi de pétanque annuel sur la Place du Verdeau. Ouvert à toutes et tous, en équipes de 2 à 3 joueurs. Inscription obligatoire.\n\n${formLink || "[LIEN FORMULAIRE]"}`,
+      `📅 Tournoi de pétanque communal - samedi 14 juin, 13h à 18h\n\nLa Commune de Bussigny organise son tournoi de pétanque annuel sur la Place du Verdeau. Ouvert à toutes et tous, en équipes de 2 à 3 joueurs. Inscription obligatoire.\n\n${formLink || "[LIEN FORMULAIRE]"}`,
     actuwp:
-      `TITRE: Tournoi de pétanque – 14 juin à Bussigny\nMESSAGE: La Commune de Bussigny organise son tournoi annuel de pétanque le samedi 14 juin de 13h à 18h, Place du Verdeau. Ouvert à tous, équipes de 2 à 3 joueurs. Inscription obligatoire : ${formLink || "[LIEN FORMULAIRE]"}`,
+      `TITRE: Tournoi de pétanque - 14 juin à Bussigny\nMESSAGE: La Commune de Bussigny organise son tournoi annuel de pétanque le samedi 14 juin de 13h à 18h, Place du Verdeau. Ouvert à tous, équipes de 2 à 3 joueurs. Inscription obligatoire : ${formLink || "[LIEN FORMULAIRE]"}`,
     agenda:
       `**Envie de tenter votre chance sur le boulodrome ?**\n\nLa Commune de Bussigny ouvre les inscriptions pour son tournoi annuel de pétanque, ouvert aux habitant.e.s et à leurs proches. Que vous soyez débutant.e.s ou confirmé.e.s, venez profiter d'une après-midi conviviale dans une ambiance festive.\n\nLes équipes sont composées de 2 à 3 joueurs. L'inscription est obligatoire via le formulaire en ligne.${formLink ? `\n\nInscriptions et informations : ${formLink}` : ""}`,
     agendaMeta: {
       categorie: "Sport",
-      quand: `Samedi 14 juin, 13h00 – 18h00`,
+      quand: "Samedi 14 juin, 13h00 - 18h00",
       ou: "Place du Verdeau, 1030 Bussigny",
     },
-    noteEditoriale: `Informations manquantes : le tarif d'inscription et la limite de places n'étaient pas indiqués sur l'affiche — des placeholders ont été utilisés.\nAdaptation temporelle : les textes sont rédigés au futur proche car la date simulée est dans plusieurs semaines.\nAmbiguïté : le graphisme suggère une organisation par la commission sports, mais seule la Commune est explicitement mentionnée.${hasTotem ? "\nTotem : canal activé, prévoir une version visuelle sans surcharge textuelle." : ""}${notes ? `\nNotes intégrées : ${notes}` : ""}`,
+    noteEditoriale: `Informations manquantes : le tarif d'inscription et la limite de places n'étaient pas indiqués sur l'affiche - des placeholders ont été utilisés.\nAdaptation temporelle : les textes sont rédigés au futur proche car la date simulée est dans plusieurs semaines.\nAmbiguïté : le graphisme suggère une organisation par la commission sports, mais seule la Commune est explicitement mentionnée.${hasTotem ? "\nTotem : canal activé, prévoir une version visuelle sans surcharge textuelle." : ""}${notes ? `\nNotes intégrées : ${notes}` : ""}`,
   };
 }
 
+export function getSelectedChannelIds(canaux) {
+  return canaux
+    .map((canal) => CANAL_TO_RESULT_KEY[canal])
+    .filter(Boolean);
+}
+
 export function buildChannelBlocks({ results, canaux, folderLink }) {
+  const selectedIds = new Set(getSelectedChannelIds(canaux));
+  const sections = CHANNEL_BLOCKS.filter((block) => selectedIds.has(block.id)).map(
+    (block) => `---\n${block.title}\n${block.getContent(results)}`
+  );
   const totemNote = canaux.includes("Totem")
-    ? "\n---\n🖥️ TOTEM (affichage digital)\nPas de texte — diffusion du visuel au format affiche.\n"
+    ? "---\n🖥️ TOTEM (affichage digital)\nPas de texte - diffusion du visuel au format affiche."
     : "";
-  return `---
-📱 INSTAGRAM (@mybussigny)
-${results.instagram}
+  const folderSection = folderLink ? `---\n📁 Dossier des visuels : ${folderLink}` : "";
 
----
-📘 FACEBOOK (Ville de Bussigny)
-${results.facebook}
-
----
-📲 ACTUAPP / WHATSAPP
-${results.actuwp}
-
----
-🗓️ AGENDA COMMUNAL (bussigny.ch)
-${results.agenda}${totemNote}${folderLink ? `\n---\n📁 Dossier des visuels : ${folderLink}\n` : ""}`;
+  return [sections.join("\n\n"), totemNote, folderSection].filter(Boolean).join("\n\n");
 }
