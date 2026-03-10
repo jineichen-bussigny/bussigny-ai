@@ -12,6 +12,9 @@ import {
   AlertCircle,
   Settings2,
   Send,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import ImageUploader from "./components/ImageUploader";
 import {
@@ -31,10 +34,49 @@ const CHANNELS = [
 const ALL_CANAUX = ["Instagram", "Facebook", "WhatsApp", "Totem"];
 const EMAIL_TO = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "communication@bussigny.ch";
 const API_ENDPOINT = "/api/analyze-event/openai";
+const CORRECTIONS_API_ENDPOINT = "/api/style-corrections";
 const MAX_NOTES_LENGTH = 500;
+const MAX_STYLE_EXAMPLES = 3;
+const EMPTY_CORRECTIONS = {
+  instagram: [],
+  facebook: [],
+  actuwp: [],
+  agenda: [],
+};
 
 function classNames(...arr) {
   return arr.filter(Boolean).join(" ");
+}
+
+function sanitizeCorrectionEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+
+  const original = String(entry.original || "").trim();
+  const corrected = String(entry.corrected || "").trim();
+
+  if (!original || !corrected) return null;
+
+  return { original, corrected };
+}
+
+function sanitizeCorrections(payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+
+  return Object.fromEntries(
+    Object.keys(EMPTY_CORRECTIONS).map((channelId) => {
+      const entries = Array.isArray(source[channelId]) ? source[channelId] : [];
+      return [channelId, entries.map(sanitizeCorrectionEntry).filter(Boolean)];
+    })
+  );
+}
+
+function buildPromptCorrections(corrections) {
+  return Object.fromEntries(
+    Object.entries(corrections).map(([channelId, entries]) => [
+      channelId,
+      Array.isArray(entries) ? entries.slice(-MAX_STYLE_EXAMPLES) : [],
+    ])
+  );
 }
 
 async function copyToClipboard(text) {
@@ -166,8 +208,21 @@ function linkify(text) {
   );
 }
 
-function ChannelCard({ channel, content }) {
+function ChannelCard({ channel, content, exampleCount, onSave }) {
   const showLinks = channel.id === "facebook" || channel.id === "actuwp";
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+
+  useEffect(() => {
+    if (!isEditing) setDraft(content);
+  }, [content, isEditing]);
+
+  const handleSave = () => {
+    const nextValue = draft.trim();
+    if (!nextValue) return;
+    onSave(nextValue);
+    setIsEditing(false);
+  };
 
   return (
     <motion.div
@@ -184,14 +239,62 @@ function ChannelCard({ channel, content }) {
               {channel.label}
             </div>
             <div className="text-xs text-slate-500">{channel.handle}</div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {exampleCount} exemple{exampleCount > 1 ? "s" : ""} de style mémorisé{exampleCount > 1 ? "s" : ""}
+            </div>
           </div>
         </div>
-        <CopyButton getText={() => content} />
+        <div className="flex flex-wrap items-center gap-2">
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
+              >
+                <Check className="h-4 w-4" />
+                Enregistrer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(content);
+                  setIsEditing(false);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                <X className="h-4 w-4" />
+                Annuler
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                <Pencil className="h-4 w-4" />
+                Modifier
+              </button>
+              <CopyButton getText={() => content} />
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
-        {showLinks ? linkify(content) : content}
-      </div>
+      {isEditing ? (
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={channel.id === "agenda" ? 10 : 7}
+          className="min-h-[160px] w-full resize-y rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-400"
+        />
+      ) : (
+        <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
+          {showLinks ? linkify(content) : content}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -237,8 +340,12 @@ async function readFile(file) {
   });
 }
 
-async function analyzeWithEndpoint({ images, formLink, notes }) {
-  const prompt = buildPrompt({ formLink, notes });
+async function analyzeWithEndpoint({ images, formLink, notes, correctionsByChannel }) {
+  const prompt = buildPrompt({
+    formLink,
+    notes,
+    correctionsByChannel: buildPromptCorrections(correctionsByChannel),
+  });
 
   const payload = {
     prompt,
@@ -270,9 +377,48 @@ async function analyzeWithEndpoint({ images, formLink, notes }) {
   return data;
 }
 
+async function fetchCorrections() {
+  const res = await fetch(CORRECTIONS_API_ENDPOINT, { method: "GET" });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errData = await res.json();
+      detail = errData.error || errData.details || "";
+    } catch {}
+    throw new Error(detail || `Erreur HTTP ${res.status}`);
+  }
+
+  return sanitizeCorrections(await res.json());
+}
+
+async function saveCorrection(channelId, entry) {
+  const res = await fetch(CORRECTIONS_API_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      channelId,
+      original: entry.original,
+      corrected: entry.corrected,
+    }),
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const errData = await res.json();
+      detail = errData.error || errData.details || "";
+    } catch {}
+    throw new Error(detail || `Erreur HTTP ${res.status}`);
+  }
+
+  return sanitizeCorrections(await res.json());
+}
+
 export default function App() {
   const [images, setImages] = useState([]);
   const [results, setResults] = useState(null);
+  const [originalResults, setOriginalResults] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [eventName, setEventName] = useState("");
   const [agendaMeta, setAgendaMeta] = useState(null);
@@ -286,7 +432,26 @@ export default function App() {
   );
   const [canaux, setCanaux] = useState(["Instagram", "Facebook", "WhatsApp", "Totem"]);
   const [mode, setMode] = useState("demo");
+  const [corrections, setCorrections] = useState(EMPTY_CORRECTIONS);
   const imagesRef = useRef(images);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchCorrections()
+      .then((data) => {
+        if (active) setCorrections(data);
+      })
+      .catch((err) => {
+        if (active) {
+          setError(err.message || "Impossible de charger les corrections persistées.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectedChannelIds = useMemo(() => new Set(getSelectedChannelIds(canaux)), [canaux]);
   const visibleChannels = useMemo(
@@ -310,34 +475,40 @@ export default function App() {
     setCanaux((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
   };
 
-  const handleFilesAdded = useCallback(async (validFiles, validationError) => {
-    if (!validFiles.length) return;
+  const handleFilesAdded = useCallback(
+    async (validFiles, validationError) => {
+      if (!validFiles.length) {
+        if (validationError) setError(validationError);
+        return;
+      }
 
-    const remainingSlots = Math.max(0, 5 - images.length);
-    const acceptedFiles = validFiles.slice(0, remainingSlots);
-    const skippedCount = validFiles.length - acceptedFiles.length;
-    const loaded = await Promise.all(acceptedFiles.map(readFile));
+      const remainingSlots = Math.max(0, 5 - images.length);
+      const acceptedFiles = validFiles.slice(0, remainingSlots);
+      const skippedCount = validFiles.length - acceptedFiles.length;
+      const loaded = await Promise.all(acceptedFiles.map(readFile));
 
-    setResults(null);
-    setAnalysis(null);
-    setAgendaMeta(null);
-    setNoteEditoriale(null);
-    setEventName("");
+      setResults(null);
+      setOriginalResults(null);
+      setAnalysis(null);
+      setAgendaMeta(null);
+      setNoteEditoriale(null);
+      setEventName("");
+      setImages((prev) => [...prev, ...loaded]);
 
-    setImages((prev) => [...prev, ...loaded]);
+      const messages = [];
+      if (validationError) messages.push(validationError);
+      if (!remainingSlots) {
+        messages.push("Maximum 5 visuels atteint.");
+      } else if (skippedCount > 0) {
+        messages.push(
+          `${skippedCount} visuel${skippedCount > 1 ? "s ont été ignorés" : " a été ignoré"} : maximum 5 visuels.`
+        );
+      }
 
-    const messages = [];
-    if (validationError) messages.push(validationError);
-    if (!remainingSlots) {
-      messages.push("Maximum 5 visuels atteint.");
-    } else if (skippedCount > 0) {
-      messages.push(
-        `${skippedCount} visuel${skippedCount > 1 ? "s ont été ignorés" : " a été ignoré"} : maximum 5 visuels.`
-      );
-    }
-
-    setError(messages.length ? messages.join("\n") : null);
-  }, [images]);
+      setError(messages.length ? messages.join("\n") : null);
+    },
+    [images]
+  );
 
   const removeImage = (i) =>
     setImages((prev) => {
@@ -345,6 +516,27 @@ export default function App() {
       if (image?.url) URL.revokeObjectURL(image.url);
       return prev.filter((_, idx) => idx !== i);
     });
+
+  const handleSaveChannelText = useCallback(
+    (channelId, correctedText) => {
+      setResults((prev) => ({ ...prev, [channelId]: correctedText }));
+
+      const originalText = originalResults?.[channelId] || "";
+      if (!originalText || originalText.trim() === correctedText.trim()) return;
+
+      saveCorrection(channelId, {
+        original: originalText,
+        corrected: correctedText,
+      })
+        .then((nextCorrections) => {
+          setCorrections(nextCorrections);
+        })
+        .catch((err) => {
+          setError(err.message || "Impossible d'enregistrer la correction.");
+        });
+    },
+    [originalResults]
+  );
 
   const handleAnalyze = async () => {
     if (!images.length) return;
@@ -356,16 +548,19 @@ export default function App() {
       const parsed =
         mode === "demo"
           ? makeDemoResult({ notes, formLink, canaux })
-          : await analyzeWithEndpoint({ images, formLink, notes });
+          : await analyzeWithEndpoint({ images, formLink, notes, correctionsByChannel: corrections });
 
-      setEventName(parsed.eventName || "");
-      setAnalysis(parsed.analyse || parsed.analysis || "");
-      setResults({
+      const nextResults = {
         instagram: parsed.instagram || "",
         facebook: parsed.facebook || "",
         actuwp: parsed.actuwp || "",
         agenda: parsed.agenda || "",
-      });
+      };
+
+      setEventName(parsed.eventName || "");
+      setAnalysis(parsed.analyse || parsed.analysis || "");
+      setResults(nextResults);
+      setOriginalResults(nextResults);
       setAgendaMeta(parsed.agendaMeta || null);
       setNoteEditoriale(parsed.noteEditoriale || parsed.recommandations || parsed.recommendations || "");
     } catch (e) {
@@ -428,11 +623,20 @@ Julien`;
     [images.length, canaux.length, mode]
   );
 
+  const totalStoredExamples = useMemo(
+    () => Object.values(corrections).reduce((sum, entries) => sum + entries.length, 0),
+    [corrections]
+  );
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
         <div className="mb-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[28px] bg-slate-900 p-6 text-white shadow-xl md:p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-[28px] bg-slate-900 p-6 text-white shadow-xl md:p-8"
+          >
             <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               Bussigny · Générateur multicanal
@@ -454,7 +658,11 @@ Julien`;
             </div>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm md:p-8"
+          >
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
               <Settings2 className="h-4 w-4" aria-hidden="true" />
               Configuration
@@ -488,6 +696,12 @@ Julien`;
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
                 En mode démo, l&apos;application génère un résultat réaliste sans appeler de modèle externe. En mode API, ChatGPT analyse les visuels et produit les textes via l&apos;endpoint sécurisé.
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-700">
+                {totalStoredExamples
+                  ? `${totalStoredExamples} correction${totalStoredExamples > 1 ? "s" : ""} persistée${totalStoredExamples > 1 ? "s" : ""}. Les ${MAX_STYLE_EXAMPLES} plus récentes par canal sont injectées dans le prompt API.`
+                  : "Aucune correction persistée pour le moment. Modifie un texte généré puis enregistre-le pour enrichir le prochain prompt API."}
               </div>
             </div>
           </motion.div>
@@ -606,7 +820,17 @@ Julien`;
               </div>
             )}
 
-            {results ? visibleChannels.map((ch) => <ChannelCard key={ch.id} channel={ch} content={results[ch.id]} />) : null}
+            {results
+              ? visibleChannels.map((channel) => (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    content={results[channel.id]}
+                    exampleCount={corrections[channel.id]?.length || 0}
+                    onSave={(value) => handleSaveChannelText(channel.id, value)}
+                  />
+                ))
+              : null}
 
             {results && canaux.includes("Totem") ? (
               <ResultBlock title="Totem" icon="🖥️" tone="slate">

@@ -114,6 +114,46 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Informations contextuelles");
   });
 
+  it("injecte les références stylistiques issues des corrections humaines", () => {
+    const prompt = buildPrompt({
+      formLink: "",
+      notes: "",
+      correctionsByChannel: {
+        instagram: [
+          {
+            original: "Rejoignez-nous pour un moment convivial.",
+            corrected: "La commune vous invite à partager un moment convivial.",
+          },
+        ],
+      },
+    });
+
+    expect(prompt).toContain("RÉFÉRENCES STYLISTIQUES");
+    expect(prompt).toContain("Proposition IA");
+    expect(prompt).toContain("Version corrigée");
+    expect(prompt).toContain("La commune vous invite à partager un moment convivial.");
+  });
+
+  it("limite à 3 exemples récents par canal dans le prompt", () => {
+    const prompt = buildPrompt({
+      formLink: "",
+      notes: "",
+      correctionsByChannel: {
+        facebook: [
+          { original: "o1", corrected: "c1" },
+          { original: "o2", corrected: "c2" },
+          { original: "o3", corrected: "c3" },
+          { original: "o4", corrected: "c4" },
+        ],
+      },
+    });
+
+    expect(prompt).not.toContain("o1");
+    expect(prompt).toContain("o2");
+    expect(prompt).toContain("o3");
+    expect(prompt).toContain("o4");
+  });
+
   it("n'inclut pas la section notes si vide", () => {
     const prompt = buildPrompt({ formLink: "", notes: "" });
     expect(prompt).not.toContain("Informations contextuelles");

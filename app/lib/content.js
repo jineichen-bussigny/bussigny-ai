@@ -33,10 +33,41 @@ const CANAL_TO_RESULT_KEY = {
   Agenda: "agenda",
 };
 
-export function buildPrompt({ formLink, notes }) {
+const CHANNEL_LABELS = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  actuwp: "ActuApp / WhatsApp",
+  agenda: "Agenda communal",
+};
+
+function buildCorrectionsSection(correctionsByChannel = {}) {
+  const sections = Object.entries(correctionsByChannel)
+    .map(([channelId, entries]) => {
+      const safeEntries = Array.isArray(entries) ? entries.slice(-3) : [];
+      if (!safeEntries.length) return "";
+
+      const examples = safeEntries
+        .map(
+          (entry, index) =>
+            `Exemple ${index + 1}\n- Proposition IA : ${entry.original}\n- Version corrigée : ${entry.corrected}`
+        )
+        .join("\n");
+
+      return `### ${CHANNEL_LABELS[channelId] || channelId}\n${examples}`;
+    })
+    .filter(Boolean);
+
+  if (!sections.length) return "";
+
+  return `\n---\n\n## RÉFÉRENCES STYLISTIQUES ISSUES DE CORRECTIONS HUMAINES\n\nUtilise ces corrections récentes pour te rapprocher du ton attendu. Ne copie pas mot à mot si le contexte change, mais reproduis le niveau d'institutionnalité, le rythme et les formulations utiles.\n\n${sections.join("\n\n")}`;
+}
+
+export function buildPrompt({ formLink, notes, correctionsByChannel = {} }) {
   const formLinkInstruction = formLink
     ? `Le lien d'inscription / de contact à utiliser est : ${formLink}`
     : "Aucun lien d'inscription n'a été fourni - ne pas en inventer.";
+
+  const correctionsSection = buildCorrectionsSection(correctionsByChannel);
 
   return `Tu es un expert en communication institutionnelle municipale et en rédaction multicanal pour les collectivités publiques suisses francophones.
 
@@ -72,6 +103,7 @@ N'invente aucune information absente de l'affiche.
 Adapte systématiquement le temps des verbes et les expressions au décalage temporel réel entre la date de publication et la date de l'événement (ex. : ne pas écrire "à demain" si l'événement est dans 3 mois).
 
 ${formLinkInstruction}
+${correctionsSection}
 
 ---
 
@@ -189,9 +221,7 @@ export function makeDemoResult({ notes, formLink, canaux }) {
 }
 
 export function getSelectedChannelIds(canaux) {
-  return canaux
-    .map((canal) => CANAL_TO_RESULT_KEY[canal])
-    .filter(Boolean);
+  return canaux.map((canal) => CANAL_TO_RESULT_KEY[canal]).filter(Boolean);
 }
 
 export function buildChannelBlocks({ results, canaux, folderLink }) {
