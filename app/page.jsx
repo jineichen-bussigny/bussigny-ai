@@ -1,3 +1,4 @@
+"use client";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Upload, Sparkles, Copy, Trash2, Link as LinkIcon, Mail, Image as ImageIcon, CheckCircle2, AlertCircle, Settings2, Send } from "lucide-react";
